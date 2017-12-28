@@ -28,6 +28,9 @@ use errors::*;
 
 mod handler;
 
+const DRV_QUERYDEVICEINTERFACE: UINT = 0x80c;
+const DRV_QUERYDEVICEINTERFACESIZE: UINT = 0x80d;
+
 const RT_SYSEX_BUFFER_SIZE: usize = 1024;
 const RT_SYSEX_BUFFER_COUNT: usize = 4;
 
@@ -75,6 +78,28 @@ impl MidiInput {
     
     pub fn port_count(&self) -> usize {
         unsafe { midiInGetNumDevs() as usize }
+    }
+
+    fn interface_id(&self, port_number: usize) -> Result<String, PortInfoError> {
+        let mut buffer_size: winapi::shared::minwindef::ULONG = 0;
+        let result = unsafe { winapi::um::mmeapi::midiInMessage(port_number as HMIDIIN, DRV_QUERYDEVICEINTERFACESIZE, &mut buffer_size as *mut _ as DWORD_PTR, 0) };
+        if result == MMSYSERR_BADDEVICEID {
+            return Err(PortInfoError::PortNumberOutOfRange)
+        } else if result != MMSYSERR_NOERROR {
+            return Err(PortInfoError::CannotRetrievePortName)
+        }
+        let mut buffer = Vec::<u8>::with_capacity(buffer_size as usize);
+        unsafe {
+            let result = winapi::um::mmeapi::midiInMessage(port_number as HMIDIIN, DRV_QUERYDEVICEINTERFACE, buffer.as_mut_ptr() as DWORD_PTR, buffer_size as DWORD_PTR);
+            if result == MMSYSERR_BADDEVICEID {
+                return Err(PortInfoError::PortNumberOutOfRange)
+            } else if result != MMSYSERR_NOERROR {
+                return Err(PortInfoError::CannotRetrievePortName)
+            }
+            buffer.set_len(buffer_size as usize);
+        }
+        let output = from_wide_ptr(buffer.as_ptr() as *const u16, buffer.len() / 2).to_string_lossy().into_owned();
+        Ok(output)
     }
     
     pub fn port_name(&self, port_number: usize) -> Result<String, PortInfoError> {
@@ -225,6 +250,28 @@ impl MidiOutput {
     
     pub fn port_count(&self) -> usize {
         unsafe { midiOutGetNumDevs() as usize }
+    }
+
+    fn interface_id(&self, port_number: usize) -> Result<String, PortInfoError> {
+        let mut buffer_size: winapi::shared::minwindef::ULONG = 0;
+        let result = unsafe { winapi::um::mmeapi::midiOutMessage(port_number as HMIDIOUT, DRV_QUERYDEVICEINTERFACESIZE, &mut buffer_size as *mut _ as DWORD_PTR, 0) };
+        if result == MMSYSERR_BADDEVICEID {
+            return Err(PortInfoError::PortNumberOutOfRange)
+        } else if result != MMSYSERR_NOERROR {
+            return Err(PortInfoError::CannotRetrievePortName)
+        }
+        let mut buffer = Vec::<u8>::with_capacity(buffer_size as usize);
+        unsafe {
+            let result = winapi::um::mmeapi::midiOutMessage(port_number as HMIDIOUT, DRV_QUERYDEVICEINTERFACE, buffer.as_mut_ptr() as DWORD_PTR, buffer_size as DWORD_PTR);
+            if result == MMSYSERR_BADDEVICEID {
+                return Err(PortInfoError::PortNumberOutOfRange)
+            } else if result != MMSYSERR_NOERROR {
+                return Err(PortInfoError::CannotRetrievePortName)
+            }
+            buffer.set_len(buffer_size as usize);
+        }
+        let output = from_wide_ptr(buffer.as_ptr() as *const u16, buffer.len() / 2).to_string_lossy().into_owned();
+        Ok(output)
     }
     
     pub fn port_name(&self, port_number: usize) -> Result<String, PortInfoError> {
