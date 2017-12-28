@@ -34,11 +34,8 @@ fn run() -> Result<(), Box<Error>> {
             stdout().flush()?;
             let mut input = String::new();
             stdin().read_line(&mut input)?;
-            let idx: usize = input.trim().parse()?;
-            match out_ports.get(idx) {
-                Some(p) => p,
-                None => return Err("invalid output port selected".into())
-            }
+            out_ports.get(input.trim().parse::<usize>()?)
+                     .ok_or("invalid output port selected")?
         }
     };
     
