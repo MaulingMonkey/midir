@@ -1,13 +1,35 @@
+use std::ops::Deref;
+
 use ::errors::*;
 use ::backend::{
-    MidiInput as MidiInputImpl,
+    MidiInputPort as MidiInputPortImpl,
+    MidiInput as MidiInputImpl, 
     MidiInputConnection as MidiInputConnectionImpl,
+    MidiOutputPort as MidiOutputPortImpl,
     MidiOutput as MidiOutputImpl,
     MidiOutputConnection as MidiOutputConnectionImpl
 };
 use ::Ignore;
 
 // TODO: make sure that these structs are all `Send` and implement `Debug` (?)
+
+// TODO: documentation
+pub struct MidiInputPort {
+    pub(crate) imp: MidiInputPortImpl
+}
+
+// TODO: documentation
+pub struct MidiInputPorts {
+    inner: Vec<MidiInputPort>
+}
+
+impl Deref for MidiInputPorts {
+    type Target = [MidiInputPort];
+
+    fn deref(&self) -> &[MidiInputPort] {
+        &self.inner
+    }
+}
 
 /// An instance of `MidiInput` is required for anything related to MIDI input.
 /// Create one with `MidiInput::new`.
@@ -27,6 +49,11 @@ impl MidiInput {
     pub fn ignore(&mut self, flags: Ignore) {
        self.imp.ignore(flags);
     }
+
+    // TODO: documentation
+    pub fn ports(&self) -> MidiInputPorts {
+        MidiInputPorts { inner: self.imp.ports_internal() }
+    }
     
     /// Get the number of available MIDI input ports that *midir* can connect to.
     pub fn port_count(&self) -> usize {
@@ -34,8 +61,8 @@ impl MidiInput {
     }
     
     /// Get the name of a specified MIDI input port.
-    pub fn port_name(&self, port_number: usize) -> Result<String, PortInfoError> {
-        self.imp.port_name(port_number)
+    pub fn port_name(&self, port: &MidiInputPort) -> Result<String, PortInfoError> {
+        self.imp.port_name(&port.imp)
     }
     
     /// Connect to a specified MIDI input port in order to receive messages.
@@ -56,10 +83,10 @@ impl MidiInput {
     /// The `port_name` is an additional name that will be assigned to the
     /// connection. It is only used by some backends.
     pub fn connect<F, T: Send>(
-        self, port_number: usize, port_name: &str, callback: F, data: T
+        self, port: &MidiInputPort, port_name: &str, callback: F, data: T
     ) -> Result<MidiInputConnection<T>, ConnectError<MidiInput>>
         where F: FnMut(u64, &[u8], &mut T) + Send + 'static {
-        match self.imp.connect(port_number, port_name, callback, data) {
+        match self.imp.connect(&port.imp, port_name, callback, data) {
             Ok(imp) => Ok(MidiInputConnection { imp: imp }),
             Err(imp) => {
                 let kind = imp.kind();
@@ -101,6 +128,24 @@ impl<T> MidiInputConnection<T> {
     }
 }
 
+// TODO: documentation
+pub struct MidiOutputPort {
+    pub(crate) imp: MidiOutputPortImpl
+}
+
+// TODO: documentation
+pub struct MidiOutputPorts {
+    inner: Vec<MidiOutputPort>
+}
+
+impl Deref for MidiOutputPorts {
+    type Target = [MidiOutputPort];
+
+    fn deref(&self) -> &[MidiOutputPort] {
+        &self.inner
+    }
+}
+
 /// An instance of `MidiOutput` is required for anything related to MIDI output.
 /// Create one with `MidiOutput::new`.
 pub struct MidiOutput {
@@ -112,6 +157,11 @@ impl MidiOutput {
     pub fn new(client_name: &str) -> Result<Self, InitError> {
         MidiOutputImpl::new(client_name).map(|imp| MidiOutput { imp: imp })
     }
+
+    // TODO: documentation
+    pub fn ports(&self) -> MidiOutputPorts {
+        MidiOutputPorts { inner: self.imp.ports_internal() }
+    }
     
     /// Get the number of available MIDI output ports that *midir* can connect to.
     pub fn port_count(&self) -> usize {
@@ -119,8 +169,8 @@ impl MidiOutput {
     }
     
     /// Get the name of a specified MIDI output port.
-    pub fn port_name(&self, port_number: usize) -> Result<String, PortInfoError> {
-        self.imp.port_name(port_number)
+    pub fn port_name(&self, port: &MidiOutputPort) -> Result<String, PortInfoError> {
+        self.imp.port_name(&port.imp)
     }
     
     /// Connect to a specified MIDI output port in order to send messages.
@@ -129,8 +179,8 @@ impl MidiOutput {
     ///
     /// The `port_name` is an additional name that will be assigned to the
     /// connection. It is only used by some backends.
-    pub fn connect(self, port_number: usize, port_name: &str) -> Result<MidiOutputConnection, ConnectError<MidiOutput>> {
-        match self.imp.connect(port_number, port_name) {
+    pub fn connect(self, port: &MidiOutputPort, port_name: &str) -> Result<MidiOutputConnection, ConnectError<MidiOutput>> {
+        match self.imp.connect(&port.imp, port_name) {
             Ok(imp) => Ok(MidiOutputConnection { imp: imp }),
             Err(imp) => {
                 let kind = imp.kind();

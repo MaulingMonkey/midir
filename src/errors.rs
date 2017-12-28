@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
+const INVALID_PORT_MSG: &'static str = "invalid port";
 const PORT_OUT_OF_RANGE_MSG: &'static str = "provided port number was out of range";
 const CANNOT_RETRIEVE_PORT_NAME_MSG: &'static str = "unknown error when trying to retrieve the port name";
 
@@ -47,14 +48,14 @@ impl fmt::Display for PortInfoError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// The kind of error for a `ConnectError`.
 pub enum ConnectErrorKind {
-    PortNumberOutOfRange,
+    InvalidPort,
     Other(&'static str)
 }
 
 impl ConnectErrorKind {
     fn description(&self) -> &str {
         match *self {
-            ConnectErrorKind::PortNumberOutOfRange => PORT_OUT_OF_RANGE_MSG,
+            ConnectErrorKind::InvalidPort => INVALID_PORT_MSG,
             ConnectErrorKind::Other(msg) => msg
         }
     }

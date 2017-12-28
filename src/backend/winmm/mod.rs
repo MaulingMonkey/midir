@@ -49,8 +49,76 @@ pub struct MidiInput {
     ignore_flags: Ignore
 }
 
+pub struct MidiInputPort {
+    name: String,
+    interface_id: Box<[u16]>
+}
+
 pub struct MidiInputConnection<T> {
     handler_data: Box<HandlerData<T>>,
+}
+
+impl MidiInputPort {
+    pub fn count() -> UINT {
+        unsafe { midiInGetNumDevs() }
+    }
+
+    fn interface_id(port_number: UINT) -> Result<Box<[u16]>, PortInfoError> {
+        let mut buffer_size: winapi::shared::minwindef::ULONG = 0;
+        let result = unsafe { winapi::um::mmeapi::midiInMessage(port_number as HMIDIIN, DRV_QUERYDEVICEINTERFACESIZE, &mut buffer_size as *mut _ as DWORD_PTR, 0) };
+        if result == MMSYSERR_BADDEVICEID {
+            return Err(PortInfoError::PortNumberOutOfRange)
+        } else if result != MMSYSERR_NOERROR {
+            return Err(PortInfoError::CannotRetrievePortName)
+        }
+        let mut buffer = Vec::<u16>::with_capacity(buffer_size as usize / 2);
+        unsafe {
+            let result = winapi::um::mmeapi::midiInMessage(port_number as HMIDIIN, DRV_QUERYDEVICEINTERFACE, buffer.as_mut_ptr() as DWORD_PTR, buffer_size as DWORD_PTR);
+            if result == MMSYSERR_BADDEVICEID {
+                return Err(PortInfoError::PortNumberOutOfRange)
+            } else if result != MMSYSERR_NOERROR {
+                return Err(PortInfoError::CannotRetrievePortName)
+            }
+            buffer.set_len(buffer_size as usize / 2);
+        }
+        //println!("{}", from_wide_ptr(buffer.as_ptr(), buffer.len()).to_string_lossy().into_owned());
+        Ok(buffer.into_boxed_slice())
+    }
+    
+    fn name(port_number: UINT) -> Result<String, PortInfoError> {
+        let mut device_caps: MIDIINCAPSW = unsafe { mem::uninitialized() };
+        let result = unsafe { midiInGetDevCapsW(port_number as UINT_PTR, &mut device_caps, mem::size_of::<MIDIINCAPSW>() as u32) };
+        if result == MMSYSERR_BADDEVICEID {
+            return Err(PortInfoError::PortNumberOutOfRange)
+        } else if result != MMSYSERR_NOERROR {
+            return Err(PortInfoError::CannotRetrievePortName)
+        }
+        let output = from_wide_ptr(device_caps.szPname.as_ptr(), device_caps.szPname.len()).to_string_lossy().into_owned();
+        Ok(output)
+    }
+
+    fn from_port_number(port_number: UINT) -> Result<Self, PortInfoError> {
+        Ok(MidiInputPort {
+            name: Self::name(port_number)?,
+            interface_id: Self::interface_id(port_number)?
+        })
+    }
+
+    fn current_port_number(&self) -> Result<UINT, &'static str> {
+        for i in 0..Self::count() {
+            if let Ok(name) = Self::name(i) {
+                if name != self.name { continue; }
+                if let Ok(id) = Self::interface_id(i) {
+                    if id == self.interface_id {
+                        return Ok(i);
+                    }
+                }
+            }
+        }
+        // TODO: introduce error type for this
+        //       (what error does WinRT return for invalid DeviceIDs?)
+        Err("port not found")
+    }
 }
 
 /// This is all the data that is stored on the heap as long as a connection
@@ -75,50 +143,40 @@ impl MidiInput {
     pub fn ignore(&mut self, flags: Ignore) {
         self.ignore_flags = flags;
     }
+
+    pub(crate) fn ports_internal(&self) -> Vec<::common::MidiInputPort> {
+        let count = MidiInputPort::count();
+        let mut result = Vec::with_capacity(count as usize);
+        for i in 0..count {
+            let port = match MidiInputPort::from_port_number(i) {
+                Ok(p) => p,
+                Err(_) => continue
+            };
+            result.push(::common::MidiInputPort {
+                imp: port
+            });
+        }
+        result
+    }
     
     pub fn port_count(&self) -> usize {
-        unsafe { midiInGetNumDevs() as usize }
+        MidiInputPort::count() as usize
     }
 
-    fn interface_id(&self, port_number: usize) -> Result<String, PortInfoError> {
-        let mut buffer_size: winapi::shared::minwindef::ULONG = 0;
-        let result = unsafe { winapi::um::mmeapi::midiInMessage(port_number as HMIDIIN, DRV_QUERYDEVICEINTERFACESIZE, &mut buffer_size as *mut _ as DWORD_PTR, 0) };
-        if result == MMSYSERR_BADDEVICEID {
-            return Err(PortInfoError::PortNumberOutOfRange)
-        } else if result != MMSYSERR_NOERROR {
-            return Err(PortInfoError::CannotRetrievePortName)
-        }
-        let mut buffer = Vec::<u8>::with_capacity(buffer_size as usize);
-        unsafe {
-            let result = winapi::um::mmeapi::midiInMessage(port_number as HMIDIIN, DRV_QUERYDEVICEINTERFACE, buffer.as_mut_ptr() as DWORD_PTR, buffer_size as DWORD_PTR);
-            if result == MMSYSERR_BADDEVICEID {
-                return Err(PortInfoError::PortNumberOutOfRange)
-            } else if result != MMSYSERR_NOERROR {
-                return Err(PortInfoError::CannotRetrievePortName)
-            }
-            buffer.set_len(buffer_size as usize);
-        }
-        let output = from_wide_ptr(buffer.as_ptr() as *const u16, buffer.len() / 2).to_string_lossy().into_owned();
-        Ok(output)
-    }
-    
-    pub fn port_name(&self, port_number: usize) -> Result<String, PortInfoError> {
-        let mut device_caps: MIDIINCAPSW = unsafe { mem::uninitialized() };
-        let result = unsafe { midiInGetDevCapsW(port_number as UINT_PTR, &mut device_caps, mem::size_of::<MIDIINCAPSW>() as u32) };
-        if result == MMSYSERR_BADDEVICEID {
-            return Err(PortInfoError::PortNumberOutOfRange)
-        } else if result != MMSYSERR_NOERROR {
-            return Err(PortInfoError::CannotRetrievePortName)
-        }
-        let output = from_wide_ptr(device_caps.szPname.as_ptr(), device_caps.szPname.len()).to_string_lossy().into_owned();
-        Ok(output)
+    pub fn port_name(&self, port: &MidiInputPort) -> Result<String, PortInfoError> {
+        Ok(port.name.clone())
     }
     
     pub fn connect<F, T: Send>(
-        self, port_number: usize, _port_name: &str, callback: F, data: T
+        self, port: &MidiInputPort, _port_name: &str, callback: F, data: T
     ) -> Result<MidiInputConnection<T>, ConnectError<MidiInput>>
         where F: FnMut(u64, &[u8], &mut T) + Send + 'static {
         
+        let port_number = match port.current_port_number() {
+            Ok(p) => p,
+            Err(_) => return Err(ConnectError::new(ConnectErrorKind::InvalidPort, self))
+        };
+
         let mut handler_data = Box::new(HandlerData {
             message: MidiMessage::new(),
             sysex_buffer: unsafe { mem::uninitialized() },
@@ -135,9 +193,7 @@ impl MidiInput {
                         handler::handle_input::<T> as DWORD_PTR,
                         handler_data_ptr as DWORD_PTR,
                         CALLBACK_FUNCTION) };
-        if result == MMSYSERR_BADDEVICEID {
-            return Err(ConnectError::new(ConnectErrorKind::PortNumberOutOfRange, self));
-        } else if result != MMSYSERR_NOERROR {
+        if result != MMSYSERR_NOERROR {
             return Err(ConnectError::other("could not create Windows MM MIDI input port", self));
         }
         
@@ -237,22 +293,23 @@ impl<T> Drop for MidiInputConnection<T> {
 #[derive(Debug)]
 pub struct MidiOutput;
 
+pub struct MidiOutputPort {
+    name: String,
+    interface_id: Box<[u16]>
+}
+
 pub struct MidiOutputConnection {
     out_handle: HMIDIOUT,
 }
 
 unsafe impl Send for MidiOutputConnection {}
 
-impl MidiOutput {
-    pub fn new(_client_name: &str) -> Result<Self, InitError> {
-        Ok(MidiOutput)
-    }
-    
-    pub fn port_count(&self) -> usize {
-        unsafe { midiOutGetNumDevs() as usize }
+impl MidiOutputPort {
+    pub fn count() -> UINT {
+        unsafe { midiOutGetNumDevs() }
     }
 
-    fn interface_id(&self, port_number: usize) -> Result<String, PortInfoError> {
+    fn interface_id(port_number: UINT) -> Result<Box<[u16]>, PortInfoError> {
         let mut buffer_size: winapi::shared::minwindef::ULONG = 0;
         let result = unsafe { winapi::um::mmeapi::midiOutMessage(port_number as HMIDIOUT, DRV_QUERYDEVICEINTERFACESIZE, &mut buffer_size as *mut _ as DWORD_PTR, 0) };
         if result == MMSYSERR_BADDEVICEID {
@@ -260,7 +317,7 @@ impl MidiOutput {
         } else if result != MMSYSERR_NOERROR {
             return Err(PortInfoError::CannotRetrievePortName)
         }
-        let mut buffer = Vec::<u8>::with_capacity(buffer_size as usize);
+        let mut buffer = Vec::<u16>::with_capacity(buffer_size as usize / 2);
         unsafe {
             let result = winapi::um::mmeapi::midiOutMessage(port_number as HMIDIOUT, DRV_QUERYDEVICEINTERFACE, buffer.as_mut_ptr() as DWORD_PTR, buffer_size as DWORD_PTR);
             if result == MMSYSERR_BADDEVICEID {
@@ -268,13 +325,13 @@ impl MidiOutput {
             } else if result != MMSYSERR_NOERROR {
                 return Err(PortInfoError::CannotRetrievePortName)
             }
-            buffer.set_len(buffer_size as usize);
+            buffer.set_len(buffer_size as usize / 2);
         }
-        let output = from_wide_ptr(buffer.as_ptr() as *const u16, buffer.len() / 2).to_string_lossy().into_owned();
-        Ok(output)
+        //println!("{}", from_wide_ptr(buffer.as_ptr(), buffer.len()).to_string_lossy().into_owned());
+        Ok(buffer.into_boxed_slice())
     }
     
-    pub fn port_name(&self, port_number: usize) -> Result<String, PortInfoError> {
+    fn name(port_number: UINT) -> Result<String, PortInfoError> {
         let mut device_caps: MIDIOUTCAPSW = unsafe { mem::uninitialized() };
         let result = unsafe { midiOutGetDevCapsW(port_number as UINT_PTR, &mut device_caps, mem::size_of::<MIDIOUTCAPSW>() as u32) };
         if result == MMSYSERR_BADDEVICEID {
@@ -285,14 +342,67 @@ impl MidiOutput {
         let output = from_wide_ptr(device_caps.szPname.as_ptr(), device_caps.szPname.len()).to_string_lossy().into_owned();
         Ok(output)
     }
+
+    fn from_port_number(port_number: UINT) -> Result<Self, PortInfoError> {
+        Ok(MidiOutputPort {
+            name: Self::name(port_number)?,
+            interface_id: Self::interface_id(port_number)?
+        })
+    }
+
+    fn current_port_number(&self) -> Result<UINT, &'static str> {
+        for i in 0..Self::count() {
+            if let Ok(name) = Self::name(i) {
+                if name != self.name { continue; }
+                if let Ok(id) = Self::interface_id(i) {
+                    if id == self.interface_id {
+                        return Ok(i);
+                    }
+                }
+            }
+        }
+        // TODO: introduce error type for this
+        //       (what error does WinRT return for invalid DeviceIDs?)
+        Err("port not found")
+    }
+}
+
+impl MidiOutput {
+    pub fn new(_client_name: &str) -> Result<Self, InitError> {
+        Ok(MidiOutput)
+    }
+
+    pub(crate) fn ports_internal(&self) -> Vec<::common::MidiOutputPort> {
+        let count = MidiOutputPort::count();
+        let mut result = Vec::with_capacity(count as usize);
+        for i in 0..count {
+            let port = match MidiOutputPort::from_port_number(i) {
+                Ok(p) => p,
+                Err(_) => continue
+            };
+            result.push(::common::MidiOutputPort {
+                imp: port
+            });
+        }
+        result
+    }
     
-    pub fn connect(self, port_number: usize, _port_name: &str) -> Result<MidiOutputConnection, ConnectError<MidiOutput>> {
+    pub fn port_count(&self) -> usize {
+        MidiOutputPort::count() as usize
+    }
+
+    pub fn port_name(&self, port: &MidiOutputPort) -> Result<String, PortInfoError> {
+        Ok(port.name.clone())
+    }
+    
+    pub fn connect(self, port: &MidiOutputPort, _port_name: &str) -> Result<MidiOutputConnection, ConnectError<MidiOutput>> {
+        let port_number = match port.current_port_number() {
+            Ok(p) => p,
+            Err(_) => return Err(ConnectError::new(ConnectErrorKind::InvalidPort, self))
+        };
         let mut out_handle = unsafe { mem::uninitialized() };
-        
         let result = unsafe { midiOutOpen(&mut out_handle, port_number as UINT, 0, 0, CALLBACK_NULL) };
-        if result == MMSYSERR_BADDEVICEID {
-            return Err(ConnectError::new(ConnectErrorKind::PortNumberOutOfRange, self));
-        } else if result != MMSYSERR_NOERROR {
+        if result != MMSYSERR_NOERROR {
             return Err(ConnectError::other("could not create Windows MM MIDI output port", self));
         }
         
