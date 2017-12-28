@@ -26,7 +26,8 @@ impl fmt::Display for InitError {
 /// An error that can occur when retrieving information about
 /// available ports.
 pub enum PortInfoError {
-    PortNumberOutOfRange,
+    PortNumberOutOfRange, // TODO: don't expose this
+    InvalidPort,
     CannotRetrievePortName,
 }
 
@@ -34,6 +35,7 @@ impl Error for PortInfoError {
     fn description(&self) -> &str {
         match *self {
             PortInfoError::PortNumberOutOfRange => PORT_OUT_OF_RANGE_MSG,
+            PortInfoError::InvalidPort => INVALID_PORT_MSG,
             PortInfoError::CannotRetrievePortName => CANNOT_RETRIEVE_PORT_NAME_MSG,
         }
     }
