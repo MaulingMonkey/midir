@@ -53,6 +53,8 @@ fn run() -> Result<(), Box<Error>> {
             sleep(Duration::from_millis(duration * 150));
             let _ = conn_out.send(&[NOTE_OFF_MSG, note, VELOCITY]);
         };
+
+        sleep(Duration::from_millis(4 * 150));
         
         play_note(66, 4);
         play_note(65, 3);
