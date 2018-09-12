@@ -1,3 +1,5 @@
+#![deny(missing_docs)]
+
 use ::errors::*;
 use ::backend::{
     MidiInputPort as MidiInputPortImpl,
@@ -9,12 +11,18 @@ use ::backend::{
 };
 use ::Ignore;
 
-// TODO: documentation
+/// An object representing a single input port.
+/// How the port is identified internally is backend-dependent.
+/// If the backend allows it, port objects remain valid when
+/// other ports in the system change (i.e. it is not just an index).
+///
+/// Use the `ports` method of a `MidiInput` instance to obtain
+/// available ports.
 pub struct MidiInputPort {
     pub(crate) imp: MidiInputPortImpl
 }
 
-// TODO: documentation
+/// A collection of input ports.
 pub type MidiInputPorts = Vec<MidiInputPort>;
 
 /// An instance of `MidiInput` is required for anything related to MIDI input.
@@ -36,7 +44,10 @@ impl MidiInput {
        self.imp.ignore(flags);
     }
 
-    // TODO: documentation
+    /// Get a collection of all MIDI input ports that *midir* can connect to.
+    /// The resulting vector contains one object per port, which you can use to
+    /// query metadata about the port or connect to it in order to receive
+    /// MIDI messages.
     pub fn ports(&self) -> MidiInputPorts {
         self.imp.ports_internal()
     }
@@ -47,6 +58,9 @@ impl MidiInput {
     }
     
     /// Get the name of a specified MIDI input port.
+    ///
+    /// An error will be returned when the port is no longer valid
+    /// (e.g. the respective device has been disconnected).
     pub fn port_name(&self, port: &MidiInputPort) -> Result<String, PortInfoError> {
         self.imp.port_name(&port.imp)
     }
@@ -68,6 +82,9 @@ impl MidiInput {
     ///
     /// The `port_name` is an additional name that will be assigned to the
     /// connection. It is only used by some backends.
+    ///
+    /// An error will be returned when the port is no longer valid
+    /// (e.g. the respective device has been disconnected).
     pub fn connect<F, T: Send>(
         self, port: &MidiInputPort, port_name: &str, callback: F, data: T
     ) -> Result<MidiInputConnection<T>, ConnectError<MidiInput>>
@@ -114,12 +131,18 @@ impl<T> MidiInputConnection<T> {
     }
 }
 
-// TODO: documentation
+/// An object representing a single input port.
+/// How the port is identified internally is backend-dependent.
+/// If the backend allows it, port objects remain valid when
+/// other ports in the system change (i.e. it is not just an index).
+///
+/// Use the `ports` method of a `MidiOutput` instance to obtain
+/// available ports.
 pub struct MidiOutputPort {
     pub(crate) imp: MidiOutputPortImpl
 }
 
-// TODO: documentation
+/// A collection of output ports.
 pub type MidiOutputPorts = Vec<MidiOutputPort>;
 
 /// An instance of `MidiOutput` is required for anything related to MIDI output.
@@ -134,7 +157,10 @@ impl MidiOutput {
         MidiOutputImpl::new(client_name).map(|imp| MidiOutput { imp: imp })
     }
 
-    // TODO: documentation
+    /// Get a collection of all MIDI output ports that *midir* can connect to.
+    /// The resulting vector contains one object per port, which you can use to
+    /// query metadata about the port or connect to it in order to send
+    /// MIDI messages.
     pub fn ports(&self) -> MidiOutputPorts {
         self.imp.ports_internal()
     }
@@ -145,6 +171,9 @@ impl MidiOutput {
     }
     
     /// Get the name of a specified MIDI output port.
+    ///
+    /// An error will be returned when the port is no longer valid
+    /// (e.g. the respective device has been disconnected).
     pub fn port_name(&self, port: &MidiOutputPort) -> Result<String, PortInfoError> {
         self.imp.port_name(&port.imp)
     }
@@ -155,6 +184,9 @@ impl MidiOutput {
     ///
     /// The `port_name` is an additional name that will be assigned to the
     /// connection. It is only used by some backends.
+    ///
+    /// An error will be returned when the port is no longer valid
+    /// (e.g. the respective device has been disconnected).
     pub fn connect(self, port: &MidiOutputPort, port_name: &str) -> Result<MidiOutputConnection, ConnectError<MidiOutput>> {
         match self.imp.connect(&port.imp, port_name) {
             Ok(imp) => Ok(MidiOutputConnection { imp: imp }),
