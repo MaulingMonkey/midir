@@ -11,8 +11,6 @@ use ::backend::{
 };
 use ::Ignore;
 
-// TODO: make sure that these structs are all `Send` and implement `Debug` (?)
-
 // TODO: documentation
 pub struct MidiInputPort {
     pub(crate) imp: MidiInputPortImpl
@@ -217,7 +215,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test() {
+    fn test_trait_impls() {
+        // make sure that all the structs implement `Send`
         fn is_send<T: Send>() {}
         is_send::<MidiInputPort>();
         is_send::<MidiInput>();

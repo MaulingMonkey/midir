@@ -38,10 +38,13 @@ install:
   - if [ "$TRAVIS_OS_NAME" == "osx" ] && [ "$FEATURES" == "jack" ]; then curl -LOS https://github.com/jackaudio/jackaudio.github.com/releases/download/1.9.11/JackOSX.0.92_b3.zip && unzip JackOSX.0.92_b3.zip && sudo installer -pkg JackOSX.0.92_b3.pkg -target /; fi
 
 # the main build & test
-# (actually connecting to the sound driver in Travis only works on macOS without JACK)
+# (actually connecting to the sound driver in Travis only works on macOS without JACK,
+# so we only test trait impls on other configurations)
 script:
   - cargo build --verbose --features "$FEATURES"
   - |
     if [ "$TRAVIS_OS_NAME" == "osx" ] && [[ "$FEATURES" != *"jack"* ]]; then
       cargo test --verbose --features "$FEATURES"
+    else
+      cargo test test_trait_impls --verbose --features "$FEATURES"
     fi

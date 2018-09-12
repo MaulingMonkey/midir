@@ -15,11 +15,15 @@ pub struct MidiInputPort {
     id: HString
 }
 
+unsafe impl Send for MidiInputPort {} // because HString doesn't ...
+
 pub struct MidiInput {
     rt: RuntimeContext,
     selector: HString,
     ignore_flags: Ignore
 }
+
+unsafe impl Send for MidiInput {} // because HString doesn't ...
 
 impl MidiInput {
     pub fn new(_client_name: &str) -> Result<Self, InitError> {
@@ -112,13 +116,16 @@ impl MidiInput {
         
         let event_token = in_port.add_message_received(&handler).expect("add_message_received failed");
 
-        Ok(MidiInputConnection { rt: self.rt, port: in_port, event_token: event_token, handler_data: handler_data })
+        Ok(MidiInputConnection { rt: self.rt, port: RtMidiInPort(in_port), event_token: event_token, handler_data: handler_data })
     }
 }
 
+struct RtMidiInPort(ComPtr<MidiInPort>);
+unsafe impl Send for RtMidiInPort {}
+
 pub struct MidiInputConnection<T> {
     rt: RuntimeContext,
-    port: ComPtr<MidiInPort>,
+    port: RtMidiInPort,
     event_token: EventRegistrationToken,
     // TODO: get rid of Arc & Mutex?
     //       synchronization is required because the borrow checker does not
@@ -127,10 +134,11 @@ pub struct MidiInputConnection<T> {
     handler_data: Arc<Mutex<HandlerData<T>>>
 }
 
+
 impl<T> MidiInputConnection<T> {
     pub fn close(self) -> (MidiInput, T) {
-        let _ = self.port.remove_message_received(self.event_token);
-        let _ = self.port.query_interface::<IClosable>().unwrap().close();
+        let _ = self.port.0.remove_message_received(self.event_token);
+        let _ = self.port.0.query_interface::<IClosable>().unwrap().close();
         let device_selector = MidiInPort::get_device_selector().expect("get_device_selector failed"); // probably won't ever fail here, because it worked previously
         let mut handler_data_locked = self.handler_data.lock().unwrap();
         (MidiInput {
@@ -156,10 +164,14 @@ pub struct MidiOutputPort {
     id: HString
 }
 
+unsafe impl Send for MidiOutputPort {} // because HString doesn't ...
+
 pub struct MidiOutput {
     rt: RuntimeContext,
     selector: HString // TODO: change to FastHString?
 }
+
+unsafe impl Send for MidiOutput {} // because HString doesn't ...
 
 impl MidiOutput {
     pub fn new(_client_name: &str) -> Result<Self, InitError> {
