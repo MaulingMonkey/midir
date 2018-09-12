@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use ::errors::*;
 use ::backend::{
     MidiInputPort as MidiInputPortImpl,
@@ -122,17 +120,7 @@ pub struct MidiOutputPort {
 }
 
 // TODO: documentation
-pub struct MidiOutputPorts {
-    inner: Vec<MidiOutputPort>
-}
-
-impl Deref for MidiOutputPorts {
-    type Target = [MidiOutputPort];
-
-    fn deref(&self) -> &[MidiOutputPort] {
-        &self.inner
-    }
-}
+pub type MidiOutputPorts = Vec<MidiOutputPort>;
 
 /// An instance of `MidiOutput` is required for anything related to MIDI output.
 /// Create one with `MidiOutput::new`.
@@ -148,7 +136,7 @@ impl MidiOutput {
 
     // TODO: documentation
     pub fn ports(&self) -> MidiOutputPorts {
-        MidiOutputPorts { inner: self.imp.ports_internal() }
+        self.imp.ports_internal()
     }
     
     /// Get the number of available MIDI output ports that *midir* can connect to.
