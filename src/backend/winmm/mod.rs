@@ -104,20 +104,18 @@ impl MidiInputPort {
         })
     }
 
-    fn current_port_number(&self) -> Result<UINT, &'static str> {
+    fn current_port_number(&self) -> Option<UINT> {
         for i in 0..Self::count() {
             if let Ok(name) = Self::name(i) {
                 if name != self.name { continue; }
                 if let Ok(id) = Self::interface_id(i) {
                     if id == self.interface_id {
-                        return Ok(i);
+                        return Some(i);
                     }
                 }
             }
         }
-        // TODO: introduce error type for this
-        //       (what error does WinRT return for invalid DeviceIDs?)
-        Err("port not found")
+        None
     }
 }
 
@@ -173,8 +171,8 @@ impl MidiInput {
         where F: FnMut(u64, &[u8], &mut T) + Send + 'static {
         
         let port_number = match port.current_port_number() {
-            Ok(p) => p,
-            Err(_) => return Err(ConnectError::new(ConnectErrorKind::InvalidPort, self))
+            Some(p) => p,
+            None => return Err(ConnectError::new(ConnectErrorKind::InvalidPort, self))
         };
 
         let mut handler_data = Box::new(HandlerData {
@@ -350,20 +348,18 @@ impl MidiOutputPort {
         })
     }
 
-    fn current_port_number(&self) -> Result<UINT, &'static str> {
+    fn current_port_number(&self) -> Option<UINT> {
         for i in 0..Self::count() {
             if let Ok(name) = Self::name(i) {
                 if name != self.name { continue; }
                 if let Ok(id) = Self::interface_id(i) {
                     if id == self.interface_id {
-                        return Ok(i);
+                        return Some(i);
                     }
                 }
             }
         }
-        // TODO: introduce error type for this
-        //       (what error does WinRT return for invalid DeviceIDs?)
-        Err("port not found")
+        None
     }
 }
 
@@ -397,8 +393,8 @@ impl MidiOutput {
     
     pub fn connect(self, port: &MidiOutputPort, _port_name: &str) -> Result<MidiOutputConnection, ConnectError<MidiOutput>> {
         let port_number = match port.current_port_number() {
-            Ok(p) => p,
-            Err(_) => return Err(ConnectError::new(ConnectErrorKind::InvalidPort, self))
+            Some(p) => p,
+            None => return Err(ConnectError::new(ConnectErrorKind::InvalidPort, self))
         };
         let mut out_handle = unsafe { mem::uninitialized() };
         let result = unsafe { midiOutOpen(&mut out_handle, port_number as UINT, 0, 0, CALLBACK_NULL) };
