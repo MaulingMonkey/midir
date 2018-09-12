@@ -19,17 +19,7 @@ pub struct MidiInputPort {
 }
 
 // TODO: documentation
-pub struct MidiInputPorts {
-    inner: Vec<MidiInputPort>
-}
-
-impl Deref for MidiInputPorts {
-    type Target = [MidiInputPort];
-
-    fn deref(&self) -> &[MidiInputPort] {
-        &self.inner
-    }
-}
+pub type MidiInputPorts = Vec<MidiInputPort>;
 
 /// An instance of `MidiInput` is required for anything related to MIDI input.
 /// Create one with `MidiInput::new`.
@@ -52,7 +42,7 @@ impl MidiInput {
 
     // TODO: documentation
     pub fn ports(&self) -> MidiInputPorts {
-        MidiInputPorts { inner: self.imp.ports_internal() }
+        self.imp.ports_internal()
     }
     
     /// Get the number of available MIDI input ports that *midir* can connect to.
@@ -219,5 +209,21 @@ impl MidiOutputConnection {
     /// The message must be a valid MIDI message (see https://www.midi.org/specifications/item/table-1-summary-of-midi-message).
     pub fn send(&mut self, message: &[u8]) -> Result<(), SendError> {
         self.imp.send(message)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test() {
+        fn is_send<T: Send>() {}
+        is_send::<MidiInputPort>();
+        is_send::<MidiInput>();
+        is_send::<MidiInputConnection<()>>();
+        is_send::<MidiOutputPort>();
+        is_send::<MidiOutput>();
+        is_send::<MidiOutputConnection>();
     }
 }

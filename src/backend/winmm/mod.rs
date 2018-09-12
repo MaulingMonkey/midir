@@ -119,6 +119,12 @@ impl MidiInputPort {
     }
 }
 
+struct SysexBuffer([LPMIDIHDR; RT_SYSEX_BUFFER_COUNT]);
+unsafe impl Send for SysexBuffer {}
+
+struct MidiInHandle(Mutex<HMIDIIN>);
+unsafe impl Send for MidiInHandle {}
+
 /// This is all the data that is stored on the heap as long as a connection
 /// is opened and passed to the callback handler.
 ///
@@ -126,8 +132,8 @@ impl MidiInputPort {
 /// offsets after monomorphization.
 struct HandlerData<T> {
     message: MidiMessage,
-    sysex_buffer: [LPMIDIHDR; RT_SYSEX_BUFFER_COUNT],
-    in_handle: Option<Mutex<HMIDIIN>>,
+    sysex_buffer: SysexBuffer,
+    in_handle: Option<MidiInHandle>,
     ignore_flags: Ignore,
     callback: Box<FnMut(u64, &[u8], &mut T) + Send + 'static>,
     user_data: Option<T>
@@ -177,7 +183,7 @@ impl MidiInput {
 
         let mut handler_data = Box::new(HandlerData {
             message: MidiMessage::new(),
-            sysex_buffer: unsafe { mem::uninitialized() },
+            sysex_buffer: SysexBuffer(unsafe { mem::uninitialized() }),
             in_handle: None,
             ignore_flags: self.ignore_flags,
             callback: Box::new(callback),
@@ -197,7 +203,7 @@ impl MidiInput {
         
         // Allocate and init the sysex buffers.
         for i in 0..RT_SYSEX_BUFFER_COUNT {
-            handler_data.sysex_buffer[i] = Box::into_raw(Box::new(MIDIHDR {
+            handler_data.sysex_buffer.0[i] = Box::into_raw(Box::new(MIDIHDR {
                 lpData: unsafe { allocate(RT_SYSEX_BUFFER_SIZE/*, mem::align_of::<u8>()*/) } as *mut i8,
                 dwBufferLength: RT_SYSEX_BUFFER_SIZE as u32,
                 dwBytesRecorded: 0,
@@ -212,19 +218,19 @@ impl MidiInput {
             // TODO: are those buffers ever freed if an error occurs here (altough these calls probably only fail with out-of-memory)?
             // TODO: close port in case of error?
             
-            let result = unsafe { midiInPrepareHeader(in_handle, handler_data.sysex_buffer[i], mem::size_of::<MIDIHDR>() as u32) };
+            let result = unsafe { midiInPrepareHeader(in_handle, handler_data.sysex_buffer.0[i], mem::size_of::<MIDIHDR>() as u32) };
             if result != MMSYSERR_NOERROR {
                 return Err(ConnectError::other("could not initialize Windows MM MIDI input port (PrepareHeader)", self));
             }
             
             // Register the buffer.
-            let result = unsafe { midiInAddBuffer(in_handle, handler_data.sysex_buffer[i], mem::size_of::<MIDIHDR>() as u32) };
+            let result = unsafe { midiInAddBuffer(in_handle, handler_data.sysex_buffer.0[i], mem::size_of::<MIDIHDR>() as u32) };
             if result != MMSYSERR_NOERROR {
                 return Err(ConnectError::other("could not initialize Windows MM MIDI input port (AddBuffer)", self));
             }            
         }
         
-        handler_data.in_handle = Some(Mutex::new(in_handle));
+        handler_data.in_handle = Some(MidiInHandle(Mutex::new(in_handle)));
         
         // We can safely access (a copy of) `in_handle` here, although
         // it has been copied into the Mutex already, because the callback
@@ -252,7 +258,7 @@ impl<T> MidiInputConnection<T> {
     
     fn close_internal(&mut self) {
         // for information about his lock, see https://groups.google.com/forum/#!topic/mididev/6OUjHutMpEo
-        let in_handle_lock = self.handler_data.in_handle.as_ref().unwrap().lock().unwrap();
+        let in_handle_lock = self.handler_data.in_handle.as_ref().unwrap().0.lock().unwrap();
         
         // TODO: Call both reset and stop here? The difference seems to be that
         //       reset "returns all pending input buffers to the callback function"
@@ -264,10 +270,10 @@ impl<T> MidiInputConnection<T> {
         for i in 0..RT_SYSEX_BUFFER_COUNT {
             let result;
             unsafe {
-                result = midiInUnprepareHeader(*in_handle_lock, self.handler_data.sysex_buffer[i], mem::size_of::<MIDIHDR>() as u32);
-                deallocate((*self.handler_data.sysex_buffer[i]).lpData as *mut u8, RT_SYSEX_BUFFER_SIZE/*, mem::align_of::<u8>()*/);
+                result = midiInUnprepareHeader(*in_handle_lock, self.handler_data.sysex_buffer.0[i], mem::size_of::<MIDIHDR>() as u32);
+                deallocate((*self.handler_data.sysex_buffer.0[i]).lpData as *mut u8, RT_SYSEX_BUFFER_SIZE/*, mem::align_of::<u8>()*/);
                 // recreate the Box so that it will be dropped/deallocated at the end of this scope
-                let _ = Box::from_raw(self.handler_data.sysex_buffer[i]);
+                let _ = Box::from_raw(self.handler_data.sysex_buffer.0[i]);
             }
             
             if result != MMSYSERR_NOERROR {
@@ -425,17 +431,9 @@ impl MidiOutputConnection {
             let mut buffer = message.to_vec();
         
             // Create and prepare MIDIHDR structure.
-            let mut sysex = MIDIHDR {
-                lpData: buffer.as_mut_ptr() as *mut i8,
-                dwBufferLength: nbytes as u32,
-                dwBytesRecorded: 0,
-                dwUser: 0,
-                dwFlags: 0,
-                lpNext: ptr::null_mut(),
-                reserved: 0,
-                dwOffset: 0,
-                dwReserved: [0; 4],
-            };
+            let mut sysex: MIDIHDR = unsafe { mem::zeroed() };
+            sysex.lpData = buffer.as_mut_ptr() as *mut i8;
+            sysex.dwBufferLength = nbytes as u32;
             
             let result = unsafe { midiOutPrepareHeader(self.out_handle, &mut sysex, mem::size_of::<MIDIHDR>() as u32) };
             
