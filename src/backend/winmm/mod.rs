@@ -93,7 +93,8 @@ impl MidiInputPort {
         } else if result != MMSYSERR_NOERROR {
             return Err(PortInfoError::CannotRetrievePortName)
         }
-        let output = from_wide_ptr(device_caps.szPname.as_ptr(), device_caps.szPname.len()).to_string_lossy().into_owned();
+        let pname: &[u16] = unsafe { &device_caps.szPname }; // requires unsafe because of packed alignment ...
+        let output = from_wide_ptr(pname.as_ptr(), pname.len()).to_string_lossy().into_owned();
         Ok(output)
     }
 
@@ -343,7 +344,8 @@ impl MidiOutputPort {
         } else if result != MMSYSERR_NOERROR {
             return Err(PortInfoError::CannotRetrievePortName)
         }
-        let output = from_wide_ptr(device_caps.szPname.as_ptr(), device_caps.szPname.len()).to_string_lossy().into_owned();
+        let pname: &[u16] = unsafe { &device_caps.szPname }; // requires unsafe because of packed alignment ...
+        let output = from_wide_ptr(pname.as_ptr(), pname.len()).to_string_lossy().into_owned();
         Ok(output)
     }
 
@@ -431,9 +433,17 @@ impl MidiOutputConnection {
             let mut buffer = message.to_vec();
         
             // Create and prepare MIDIHDR structure.
-            let mut sysex: MIDIHDR = unsafe { mem::zeroed() };
-            sysex.lpData = buffer.as_mut_ptr() as *mut i8;
-            sysex.dwBufferLength = nbytes as u32;
+            let mut sysex = MIDIHDR {
+                lpData: buffer.as_mut_ptr() as *mut i8,
+                dwBufferLength: nbytes as u32,
+                dwBytesRecorded: 0,
+                dwUser: 0,
+                dwFlags: 0,
+                lpNext: ptr::null_mut(),
+                reserved: 0,
+                dwOffset: 0,
+                dwReserved: unsafe { mem::zeroed() },
+            };
             
             let result = unsafe { midiOutPrepareHeader(self.out_handle, &mut sysex, mem::size_of::<MIDIHDR>() as u32) };
             
