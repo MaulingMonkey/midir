@@ -85,10 +85,45 @@ impl MidiInput {
     ///
     /// An error will be returned when the port is no longer valid
     /// (e.g. the respective device has been disconnected).
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn connect<F, T: Send>(
         self, port: &MidiInputPort, port_name: &str, callback: F, data: T
     ) -> Result<MidiInputConnection<T>, ConnectError<MidiInput>>
         where F: FnMut(u64, &[u8], &mut T) + Send + 'static {
+        match self.imp.connect(&port.imp, port_name, callback, data) {
+            Ok(imp) => Ok(MidiInputConnection { imp: imp }),
+            Err(imp) => {
+                let kind = imp.kind();
+                Err(ConnectError::new(kind, MidiInput { imp: imp.into_inner() }))
+            } 
+        }
+    }
+
+    /// Connect to a specified MIDI input port in order to receive messages.
+    /// For each incoming MIDI message, the provided `callback` function will
+    /// be called. The first parameter of the callback function is a timestamp
+    /// (in microseconds) designating the time since some unspecified point in
+    /// the past (which will not change during the lifetime of a
+    /// `MidiInputConnection`). The second parameter contains the actual bytes
+    /// of the MIDI message.
+    ///
+    /// Additional data that should be passed whenever the callback is
+    /// invoked can be specified by `data`. Use the empty tuple `()` if
+    /// you do not want to pass any additional data.
+    ///
+    /// The connection will be kept open as long as the returned
+    /// `MidiInputConnection` is kept alive.
+    ///
+    /// The `port_name` is an additional name that will be assigned to the
+    /// connection. It is only used by some backends.
+    ///
+    /// An error will be returned when the port is no longer valid
+    /// (e.g. the respective device has been disconnected).
+    #[cfg(target_arch = "wasm32")] // No Send requirement
+    pub fn connect<F, T>(
+        self, port: &MidiInputPort, port_name: &str, callback: F, data: T
+    ) -> Result<MidiInputConnection<T>, ConnectError<MidiInput>>
+        where F: FnMut(u64, &[u8], &mut T) + 'static {
         match self.imp.connect(&port.imp, port_name, callback, data) {
             Ok(imp) => Ok(MidiInputConnection { imp: imp }),
             Err(imp) => {
@@ -238,11 +273,13 @@ mod tests {
     fn test_trait_impls() {
         // make sure that all the structs implement `Send`
         fn is_send<T: Send>() {}
-        is_send::<MidiInputPort>();
         is_send::<MidiInput>();
-        is_send::<MidiInputConnection<()>>();
-        is_send::<MidiOutputPort>();
         is_send::<MidiOutput>();
-        is_send::<MidiOutputConnection>();
+        #[cfg(not(target_arch = "wasm32"))] {
+            is_send::<MidiInputPort>();
+            is_send::<MidiInputConnection<()>>();
+            is_send::<MidiOutputPort>();
+            is_send::<MidiOutputConnection>();
+        }
     }
 }

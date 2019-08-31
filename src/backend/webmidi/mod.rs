@@ -126,10 +126,10 @@ impl MidiInput {
         Ok(port.input.name().unwrap_or_else(|| port.input.id()))
     }
 
-    pub fn connect<F, T: Send + 'static>(
+    pub fn connect<F, T: 'static>(
         self, port: &MidiInputPort, _port_name: &str, mut callback: F, data: T
     ) -> Result<MidiInputConnection<T>, ConnectError<MidiInput>>
-        where F: FnMut(u64, &[u8], &mut T) + Send + 'static
+        where F: FnMut(u64, &[u8], &mut T) + 'static
     {
         let input = port.input.clone();
         let _ = input.open(); // NOTE: asyncronous!
