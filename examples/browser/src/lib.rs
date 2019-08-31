@@ -47,15 +47,18 @@ fn run() -> Result<bool, Box<dyn Error>> {
     let mut midi_in = MidiInput::new("midir reading input")?;
     midi_in.ignore(Ignore::None);
 
-    // Get an input port (read from console if multiple are available)
+    // Get an input port (TODO: prompt the user for which one they want if there are multiple, or open them all?)
     let in_port = match midi_in.port_count() {
-        0 => return Ok(false),
+        0 => {
+            println!("No ports available yet, will try again");
+            return Ok(false)
+        },
         1 => {
             println!("Choosing the only available input port: {}", midi_in.port_name(0).unwrap());
             0
         },
         _ => {
-            println!("\nAvailable input ports:");
+            println!("Available input ports:");
             for i in 0..midi_in.port_count() {
                 println!("{}: {}", i, midi_in.port_name(i).unwrap());
             }
@@ -64,7 +67,7 @@ fn run() -> Result<bool, Box<dyn Error>> {
         }
     };
 
-    println!("\nOpening connection");
+    println!("Opening connection");
     let in_port_name = midi_in.port_name(in_port)?;
 
     // _conn_in needs to be a named parameter, because it needs to be kept alive until the end of the scope

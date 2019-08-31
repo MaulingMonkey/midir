@@ -23,7 +23,7 @@ use ::Ignore;
 
 
 
-/// Bidirectional lookup of device objects from indicies, and vicea versa.
+/// Bidirectional lookup of device objects from indicies, and vice versa.
 struct DeviceSet<T: Deref<Target = MidiPort> + JsCast> {
     slot_lookup: HashMap<String, usize>,
     name_lookup: Vec<T>,
